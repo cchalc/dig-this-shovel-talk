@@ -1,0 +1,15 @@
+# ShovelSense Data Generation Dependencies
+#
+# Install with: uv pip install -r requirements.txt
+
+# Databricks SDK for API access
+databricks-sdk>=0.28.0
+
+# Data generation
+numpy>=1.24.0
+pandas>=2.0.0
+pyarrow>=14.0.0
+faker>=24.0.0
+
+# For local Spark testing (optional)
+# pyspark>=3.5.0

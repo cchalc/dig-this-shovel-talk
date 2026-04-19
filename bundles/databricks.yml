@@ -1,0 +1,80 @@
+# Databricks Asset Bundle for ShovelSense Data Pipeline
+#
+# Deploy with: databricks bundle deploy --profile fevm-cjc
+# Run with: databricks bundle run shovelsense_pipeline --profile fevm-cjc
+
+bundle:
+  name: shovelsense_data_pipeline
+
+variables:
+  catalog:
+    description: Unity Catalog name
+    default: cjc_aws_workspace_catalog
+  schema:
+    description: Schema name
+    default: shovelsense
+  warehouse_id:
+    description: SQL Warehouse ID for queries
+    default: auto
+
+workspace:
+  host: https://fevm-cjc-aws-workspace.cloud.databricks.com
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+
+resources:
+  # Bronze layer: ingest raw data from volume
+  pipelines:
+    shovelsense_bronze_silver:
+      name: "ShovelSense Bronze-Silver Pipeline"
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      channel: PREVIEW
+      continuous: false
+      development: true
+      photon: true
+      libraries:
+        - notebook:
+            path: ./src/bronze_silver_pipeline.py
+      configuration:
+        catalog: ${var.catalog}
+        schema: ${var.schema}
+        volume_path: "/Volumes/${var.catalog}/${var.schema}/raw_data"
+
+  # Jobs for orchestration
+  jobs:
+    shovelsense_pipeline:
+      name: "ShovelSense Data Pipeline"
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"  # Daily at 6 AM
+        timezone_id: America/Los_Angeles
+        pause_status: PAUSED
+      tasks:
+        - task_key: ingest_bronze_silver
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.shovelsense_bronze_silver.id}
+
+    data_quality_check:
+      name: "ShovelSense Data Quality Check"
+      tasks:
+        - task_key: validate_data
+          notebook_task:
+            notebook_path: ./src/data_quality_check.py
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+          new_cluster:
+            spark_version: "14.3.x-scala2.12"
+            num_workers: 1
+            node_type_id: "i3.xlarge"
+            data_security_mode: USER_ISOLATION
