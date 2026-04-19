@@ -33,19 +33,20 @@ targets:
       root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
 
 resources:
-  # Bronze layer: ingest raw data from volume
+  # ShovelSense Medallion Architecture Pipeline
   pipelines:
-    shovelsense_bronze_silver:
-      name: "ShovelSense Bronze-Silver Pipeline"
+    shovelsense_medallion:
+      name: "ShovelSense Medallion Pipeline"
       catalog: ${var.catalog}
       target: ${var.schema}
       channel: PREVIEW
       continuous: false
       development: true
       photon: true
+      serverless: true
       libraries:
         - notebook:
-            path: ./src/bronze_silver_pipeline.py
+            path: ./src/shovelsense_pipeline.py
       configuration:
         catalog: ${var.catalog}
         schema: ${var.schema}
@@ -60,9 +61,9 @@ resources:
         timezone_id: America/Los_Angeles
         pause_status: PAUSED
       tasks:
-        - task_key: ingest_bronze_silver
+        - task_key: run_medallion_pipeline
           pipeline_task:
-            pipeline_id: ${resources.pipelines.shovelsense_bronze_silver.id}
+            pipeline_id: ${resources.pipelines.shovelsense_medallion.id}
 
     data_quality_check:
       name: "ShovelSense Data Quality Check"
