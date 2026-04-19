@@ -5,9 +5,24 @@ ShovelSense Spark Declarative Pipeline
 Implements a medallion architecture (Bronze → Silver → Gold) for mining operations data.
 Creates dimension and fact tables following Kimball star schema principles.
 
+Based on the ShovelSense ROI Dialectical Analysis, this pipeline processes data for a
+heterogeneous copper porphyry deposit with the following characteristics:
+
+Deposit Parameters:
+- Cutoff grade: 0.32% Cu (from Round 1 Context Briefing)
+- Average head grade: 0.45% Cu
+- Mineralogy: ~80% chalcopyrite (CuFeS₂), ~20% bornite (Cu₅FeS₄)
+- Geological zonation: Bornite core → Chalcopyrite zone → Pyrite halo
+
+Key Metrics Tracked (from Dialectical Analysis):
+- Diversion rate (~11%): Ore from Waste + Waste from Ore
+- F1 score for classification accuracy
+- Surface-volume correlation by geological domain
+- XRF confidence and matrix effects
+
 Data Model:
 - Bronze: Raw ingestion from parquet files
-- Silver: Cleaned, validated, enriched
+- Silver: Cleaned, validated, enriched with domain terminology
 - Gold: Dimension tables (dim_*) and Fact tables (fact_*)
 """
 from pyspark import pipelines as dp
@@ -16,7 +31,7 @@ from pyspark.sql.types import *
 from pyspark.sql.window import Window
 
 # =============================================================================
-# CONFIGURATION
+# CONFIGURATION - Based on Dialectical Analysis Parameters
 # =============================================================================
 # Get configuration from pipeline settings
 catalog = spark.conf.get("catalog", "cjc_aws_workspace_catalog")
@@ -24,7 +39,12 @@ schema = spark.conf.get("schema", "shovelsense")
 volume_path = spark.conf.get("volume_path", f"/Volumes/{catalog}/{schema}/raw_data")
 
 # Grade cutoff for ore vs waste classification
-CU_CUTOFF = 0.20
+# From Round 1 Context Briefing: Cutoff grade 0.32% Cu
+CU_CUTOFF = 0.32
+
+# Economic parameters (from Round 3, Direction C)
+COPPER_PRICE_PER_TONNE = 8820  # $4/lb
+METALLURGICAL_RECOVERY = 0.85  # 85%
 
 # =============================================================================
 # BRONZE LAYER - Raw Ingestion
@@ -114,12 +134,19 @@ def bronze_shift_summaries():
 
 @dp.table(
     name="silver_block_model",
-    comment="Cleaned geological block model with derived classification fields"
+    comment="Cleaned geological block model with mineralogy and zonation data"
 )
 @dp.expect_or_drop("valid_block_id", "block_id IS NOT NULL")
 @dp.expect_or_drop("valid_cu_grade", "planned_cu_grade >= 0 AND planned_cu_grade <= 5")
 def silver_block_model():
-    """Clean and enrich block model data."""
+    """
+    Clean and enrich block model data.
+
+    Includes new fields from dialectical analysis:
+    - Mineralogy: chalcopyrite_pct, bornite_pct
+    - Surface-volume correlation estimate by zone
+    - Vein density classification
+    """
     return (
         spark.read.table("bronze_block_model")
         .withColumn("is_ore", F.col("planned_cu_grade") >= CU_CUTOFF)
@@ -129,7 +156,20 @@ def silver_block_model():
             .when(F.col("planned_cu_grade") >= CU_CUTOFF, "LOW")
             .otherwise("WASTE")
         )
-        .withColumn("block_volume_m3", F.lit(15 * 15 * 15))  # 15m block size assumption
+        .withColumn("block_volume_m3", F.lit(15 * 15 * 15))  # 15m block size
+        # Mineralogy classification (from Round 1: 80% chalcopyrite, 20% bornite)
+        .withColumn("mineralogy_class",
+            F.when(F.col("bornite_pct") >= 50, "BORNITE_DOMINANT")
+            .when(F.col("chalcopyrite_pct") >= 70, "CHALCOPYRITE_DOMINANT")
+            .otherwise("MIXED")
+        )
+        # Surface-volume correlation quality indicator
+        # From Round 1: This is the critical unknown for XRF value
+        .withColumn("sv_correlation_quality",
+            F.when(F.col("surface_volume_correlation") >= 0.70, "HIGH")
+            .when(F.col("surface_volume_correlation") >= 0.50, "MODERATE")
+            .otherwise("LOW")
+        )
     )
 
 
@@ -160,14 +200,21 @@ def silver_trucks():
 
 @dp.table(
     name="silver_bucket_measurements",
-    comment="Cleaned XRF measurements with quality flags and parsed timestamps",
+    comment="Cleaned XRF measurements with matrix effects and heterogeneity analysis",
     cluster_by=["measurement_date"]
 )
 @dp.expect_or_drop("valid_measurement_id", "measurement_id IS NOT NULL")
 @dp.expect_or_drop("valid_cu_grade", "cu_grade_pct >= 0")
 @dp.expect_or_drop("valid_confidence", "xrf_confidence >= 0.5")
 def silver_bucket_measurements():
-    """Clean and enrich XRF bucket measurements."""
+    """
+    Clean and enrich XRF bucket measurements.
+
+    From Round 1 (XRF Physics):
+    - XRF penetration depth: <1mm (surface only)
+    - Matrix effects: Fe absorbs Cu X-rays in chalcopyrite (30.5% Fe)
+    - Heterogeneity error: Surface may not represent volume
+    """
     return (
         spark.read.table("bronze_bucket_measurements")
         .withColumn("timestamp", F.to_timestamp("timestamp"))
@@ -184,18 +231,38 @@ def silver_bucket_measurements():
             .when(F.col("cu_grade_pct") >= CU_CUTOFF, "LOW_GRADE")
             .otherwise("WASTE")
         )
+        # Matrix effect severity indicator
+        # From Round 1: Chalcopyrite (30.5% Fe) absorbs Cu X-rays
+        .withColumn("matrix_effect_severity",
+            F.when(F.col("matrix_effect_factor") < 0.95, "HIGH")
+            .when(F.col("matrix_effect_factor") < 0.98, "MODERATE")
+            .otherwise("LOW")
+        )
+        # Measurement quality composite score
+        .withColumn("measurement_quality_score",
+            (F.col("xrf_confidence") * 0.5 +
+             F.col("matrix_effect_factor") * 0.3 +
+             F.when(F.col("both_sensors_active"), 0.2).otherwise(0.0))
+        )
     )
 
 
 @dp.table(
     name="silver_truck_loads",
-    comment="Cleaned truck loads with diversion analysis flags",
+    comment="Cleaned truck loads with diversion analysis and economic valuation",
     cluster_by=["load_date"]
 )
 @dp.expect_or_drop("valid_load_id", "load_id IS NOT NULL")
 @dp.expect_or_drop("valid_grade", "avg_cu_grade_pct >= 0")
 def silver_truck_loads():
-    """Clean and enrich truck load data."""
+    """
+    Clean and enrich truck load data.
+
+    From Round 3 (Economic Model):
+    - Value per 0.01% grade improvement: $7.2M/year
+    - Copper price: $8,820/tonne ($4/lb)
+    - Metallurgical recovery: 85%
+    """
     return (
         spark.read.table("bronze_truck_loads")
         .withColumn("timestamp", F.to_timestamp("timestamp"))
@@ -217,9 +284,32 @@ def silver_truck_loads():
             .when(F.col("avg_cu_grade_pct") >= CU_CUTOFF, "LOW")
             .otherwise("WASTE")
         )
-        # Economic value estimate (simplified)
-        .withColumn("estimated_cu_tonnes",
-            F.col("payload_tonnes") * F.col("avg_cu_grade_pct") / 100)
+        # Economic value estimates (from Round 3, Direction C)
+        # Copper value: tonnes * grade * recovery * price
+        .withColumn("estimated_cu_value_usd",
+            F.col("payload_tonnes") *
+            F.col("avg_cu_grade_pct") / 100 *
+            F.lit(METALLURGICAL_RECOVERY) *
+            F.lit(COPPER_PRICE_PER_TONNE)
+        )
+        # Surface-volume correlation quality for this load
+        .withColumn("sv_correlation_quality",
+            F.when(F.col("surface_volume_correlation") >= 0.70, "HIGH")
+            .when(F.col("surface_volume_correlation") >= 0.50, "MODERATE")
+            .otherwise("LOW")
+        )
+        # XRF reliability indicator
+        .withColumn("xrf_reliability",
+            F.when(
+                (F.col("avg_xrf_confidence") >= 0.90) &
+                (F.col("surface_volume_correlation") >= 0.60),
+                "HIGH"
+            ).when(
+                (F.col("avg_xrf_confidence") >= 0.80) &
+                (F.col("surface_volume_correlation") >= 0.45),
+                "MODERATE"
+            ).otherwise("LOW")
+        )
     )
 
 
@@ -281,10 +371,17 @@ def dim_trucks():
 
 @dp.table(
     name="dim_block_model",
-    comment="Block model dimension with geological attributes"
+    comment="Block model dimension with mineralogy and XRF suitability indicators"
 )
 def dim_block_model():
-    """Create block model dimension."""
+    """
+    Create block model dimension.
+
+    Includes new fields from dialectical analysis:
+    - Mineralogy (chalcopyrite/bornite)
+    - Surface-volume correlation (key XRF accuracy predictor)
+    - Vein density (affects heterogeneity error)
+    """
     return (
         spark.read.table("silver_block_model")
         .select(
@@ -302,6 +399,16 @@ def dim_block_model():
             F.col("is_ore"),
             F.col("grade_bin"),
             F.col("block_volume_m3"),
+            # New mineralogy fields (from Round 1: 80% chalcopyrite, 20% bornite)
+            F.col("chalcopyrite_pct"),
+            F.col("bornite_pct"),
+            F.col("mineralogy_class"),
+            # Surface-volume correlation (from Round 1: the critical unknown)
+            F.col("surface_volume_correlation"),
+            F.col("sv_correlation_quality"),
+            # Vein density and nugget effect
+            F.col("nugget_effect_variance"),
+            F.col("vein_density_class"),
             F.current_timestamp().alias("_updated_at")
         )
     )
@@ -355,11 +462,17 @@ def dim_date():
 
 @dp.table(
     name="fact_bucket_measurements",
-    comment="Fact table for XRF bucket measurements",
+    comment="Fact table for XRF bucket measurements with matrix effect analysis",
     cluster_by=["measurement_date_key"]
 )
 def fact_bucket_measurements():
-    """Create bucket measurement fact table."""
+    """
+    Create bucket measurement fact table.
+
+    From Round 1 (XRF Physics):
+    - Matrix effects: Fe absorbs Cu X-rays (chalcopyrite has 30.5% Fe)
+    - Heterogeneity error: Surface may not represent volume
+    """
     return (
         spark.read.table("silver_bucket_measurements")
         .select(
@@ -381,6 +494,10 @@ def fact_bucket_measurements():
             F.col("as_grade_ppm"),
             F.col("laser_fill_level_pct"),
             F.col("xrf_confidence"),
+            # Matrix effect analysis (from Round 1)
+            F.col("matrix_effect_factor"),
+            F.col("matrix_effect_severity"),
+            F.col("measurement_quality_score"),
             # Flags
             F.col("sensor_head_1_active"),
             F.col("sensor_head_2_active"),
@@ -393,11 +510,19 @@ def fact_bucket_measurements():
 
 @dp.table(
     name="fact_truck_loads",
-    comment="Fact table for truck loads with diversion classification",
+    comment="Fact table for truck loads with diversion classification and XRF quality metrics",
     cluster_by=["load_date_key"]
 )
 def fact_truck_loads():
-    """Create truck load fact table."""
+    """
+    Create truck load fact table.
+
+    Includes fields from dialectical analysis:
+    - geological_domain: Zone-based classification for stratified accuracy analysis
+    - surface_volume_correlation: Key unknown from Round 1
+    - avg_xrf_confidence: Sensor reliability indicator
+    - estimated_cu_value_usd: Economic impact per load (Round 3)
+    """
     return (
         spark.read.table("silver_truck_loads")
         .select(
@@ -421,6 +546,15 @@ def fact_truck_loads():
             F.col("payload_tonnes"),
             F.col("cycle_time_minutes"),
             F.col("estimated_cu_tonnes"),
+            # XRF quality metrics (from dialectical analysis)
+            F.col("avg_xrf_confidence"),
+            F.col("surface_volume_correlation"),
+            F.col("sv_correlation_quality"),
+            F.col("xrf_reliability"),
+            # Geological context
+            F.col("geological_domain"),
+            # Economic value (from Round 3, Direction C)
+            F.col("estimated_cu_value_usd"),
             # Classification
             F.col("planned_classification"),
             F.col("shovelsense_classification"),
@@ -561,18 +695,134 @@ def fact_sensor_performance():
     )
 
 
+@dp.materialized_view(
+    name="fact_domain_classification_accuracy",
+    comment="Classification accuracy by geological domain - key for evaluating zone-dependent XRF value"
+)
+def fact_domain_classification_accuracy():
+    """
+    Classification accuracy stratified by geological domain.
+
+    From Round 1 Determinate Negation:
+    "The surface-volume correlation may be low, but 'low' is not 'zero.'
+    And even low correlation can have positive expected value if the
+    decision problem is structured correctly."
+
+    From Round 2 Direction D:
+    "The 80/20 chalcopyrite/bornite split suggests XRF accuracy may vary
+    spatially. A pilot could test this."
+    """
+    return (
+        spark.read.table("fact_truck_loads")
+        .groupBy("geological_domain")
+        .agg(
+            F.count("*").alias("total_loads"),
+            # True Positives
+            F.sum(F.when(
+                (F.col("planned_classification") == "ORE") &
+                (F.col("shovelsense_classification") == "ORE"), 1
+            ).otherwise(0)).alias("true_positive"),
+            # True Negatives
+            F.sum(F.when(
+                (F.col("planned_classification") == "WASTE") &
+                (F.col("shovelsense_classification") == "WASTE"), 1
+            ).otherwise(0)).alias("true_negative"),
+            # False Positives (ore from waste)
+            F.sum(F.when(
+                (F.col("planned_classification") == "WASTE") &
+                (F.col("shovelsense_classification") == "ORE"), 1
+            ).otherwise(0)).alias("false_positive"),
+            # False Negatives (waste from ore)
+            F.sum(F.when(
+                (F.col("planned_classification") == "ORE") &
+                (F.col("shovelsense_classification") == "WASTE"), 1
+            ).otherwise(0)).alias("false_negative"),
+            # Surface-volume correlation stats
+            F.avg("surface_volume_correlation").alias("avg_surface_volume_corr"),
+            F.avg("avg_xrf_confidence").alias("avg_xrf_confidence"),
+            # Economic impact
+            F.sum("estimated_cu_value_usd").alias("total_cu_value_usd")
+        )
+        .withColumn("accuracy",
+            (F.col("true_positive") + F.col("true_negative")) / F.col("total_loads"))
+        .withColumn("precision_ore",
+            F.col("true_positive") / (F.col("true_positive") + F.col("false_positive")))
+        .withColumn("recall_ore",
+            F.col("true_positive") / (F.col("true_positive") + F.col("false_negative")))
+        .withColumn("f1_score",
+            2 * F.col("precision_ore") * F.col("recall_ore") /
+            (F.col("precision_ore") + F.col("recall_ore")))
+        .withColumn("diversion_rate",
+            (F.col("false_positive") + F.col("false_negative")) / F.col("total_loads"))
+    )
+
+
+@dp.materialized_view(
+    name="fact_sv_correlation_analysis",
+    comment="Surface-volume correlation analysis - the key unknown from Round 1"
+)
+def fact_sv_correlation_analysis():
+    """
+    Analyze surface-volume correlation and its impact on classification.
+
+    From Round 1 Context Briefing:
+    "The relationship between multi-surface XRF readings and true
+    volumetric grade of a heterogeneous bucket load is NOT
+    well-characterized in published literature."
+
+    This view helps answer: Does higher surface-volume correlation
+    lead to better classification accuracy?
+    """
+    return (
+        spark.read.table("fact_truck_loads")
+        .withColumn("sv_corr_bin",
+            F.when(F.col("surface_volume_correlation") >= 0.70, "0.70-1.00")
+            .when(F.col("surface_volume_correlation") >= 0.55, "0.55-0.70")
+            .when(F.col("surface_volume_correlation") >= 0.40, "0.40-0.55")
+            .otherwise("0.00-0.40")
+        )
+        .groupBy("sv_corr_bin")
+        .agg(
+            F.count("*").alias("total_loads"),
+            F.sum(F.when(F.col("diversion_type") == "ALIGNED", 1).otherwise(0)).alias("correct_classifications"),
+            F.sum(F.when(F.col("is_ore_recovery"), 1).otherwise(0)).alias("ore_from_waste"),
+            F.sum(F.when(F.col("is_dilution_prevention"), 1).otherwise(0)).alias("waste_from_ore"),
+            F.avg("avg_xrf_confidence").alias("avg_xrf_confidence"),
+            F.avg("surface_volume_correlation").alias("avg_sv_correlation"),
+            F.sum("estimated_cu_value_usd").alias("total_cu_value_usd")
+        )
+        .withColumn("accuracy_rate",
+            F.col("correct_classifications") / F.col("total_loads"))
+        .withColumn("diversion_rate",
+            1 - F.col("accuracy_rate"))
+    )
+
+
 # =============================================================================
 # SUMMARY VIEW
 # =============================================================================
 
 @dp.materialized_view(
     name="summary_overall_performance",
-    comment="Overall pipeline performance summary"
+    comment="Overall performance summary with economic metrics aligned to dialectical analysis"
 )
 def summary_overall_performance():
-    """Create overall performance summary."""
+    """
+    Create overall performance summary.
+
+    Key metrics from Round 3 (Economic Model):
+    - Total copper value processed
+    - Required grade improvement for breakeven (0.033% Cu for ShovelSense)
+    - Value per 0.01% grade improvement: $7.2M/year
+
+    From Round 1 Context Briefing:
+    - Target diversion rate: ~11%
+    - Ore from Waste: ~6.4%
+    - Waste from Ore: ~4.7%
+    """
     daily = spark.read.table("fact_daily_diversions")
     accuracy = spark.read.table("fact_classification_accuracy")
+    truck_loads = spark.read.table("fact_truck_loads")
 
     daily_agg = daily.agg(
         F.sum("total_trucks").alias("total_trucks"),
@@ -591,4 +841,12 @@ def summary_overall_performance():
         F.avg("f1_score").alias("avg_f1")
     )
 
-    return daily_agg.crossJoin(accuracy_agg)
+    # Economic value metrics
+    economic_agg = truck_loads.agg(
+        F.sum("estimated_cu_value_usd").alias("total_cu_value_usd"),
+        F.avg("avg_cu_grade_pct").alias("avg_head_grade_pct"),
+        F.avg("surface_volume_correlation").alias("avg_sv_correlation"),
+        F.avg("avg_xrf_confidence").alias("avg_xrf_confidence")
+    )
+
+    return daily_agg.crossJoin(accuracy_agg).crossJoin(economic_agg)

@@ -49,9 +49,7 @@ generate-data:
 # Upload generated data to Databricks Volume
 upload-data:
     @echo "Uploading data to Databricks Volume..."
-    for f in data/generated/*.parquet
-        databricks fs cp $f dbfs:{{VOLUME_PATH}}/(basename $f) --profile {{DATABRICKS_CONFIG_PROFILE}} --overwrite
-    end
+    for f in data/generated/*.parquet; databricks fs cp $f dbfs:{{VOLUME_PATH}}/(basename $f) --profile {{DATABRICKS_CONFIG_PROFILE}} --overwrite; end
     @echo "Upload complete!"
 
 # Generate PDF documents for RAG testing

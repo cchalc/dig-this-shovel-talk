@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShovelSense ROI Analysis - A Three-Round Dialectical Evaluation</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Source+Code+Pro:wght@400;500&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #F5F5F0;
+    --white: #FFFFFF;
+    --gray-900: #1B1F24;
+    --gray-700: #3B3F46;
+    --gray-500: #6B7280;
+    --gray-300: #D1D5DB;
+    --gray-100: #EDEEE9;
+    --red: #FF3621;
+    --red-light: rgba(255, 54, 33, 0.08);
+    --red-dark: #E0311D;
+    --green: #00A972;
+    --green-light: rgba(0, 169, 114, 0.08);
+    --amber: #E88C30;
+    --amber-light: rgba(232, 140, 48, 0.08);
+    --blue: #3B82F6;
+    --blue-light: rgba(59, 130, 246, 0.08);
+    --purple: #8B5CF6;
+    --font: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --mono: 'Source Code Pro', 'SF Mono', monospace;
+  }
+
+  html { scroll-snap-type: y mandatory; overflow-y: scroll; font-size: 17px; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--gray-900);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* Slides */
+  .slide {
+    scroll-snap-align: start;
+    min-height: 100vh;
+    width: 100vw;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 5vh 10vw;
+    position: relative;
+    overflow: hidden;
+  }
+  .slide.pad-top {
+    justify-content: flex-start;
+    padding-top: 5vh;
+  }
+
+  /* Dot nav */
+  .dot-nav {
+    position: fixed;
+    right: 1.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    z-index: 200;
+  }
+  .dot-nav a {
+    display: block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--gray-300);
+    transition: background 0.25s, transform 0.25s;
+    border: none;
+  }
+  .dot-nav a.active { background: var(--red); transform: scale(1.4); }
+
+  /* Colored divider slides */
+  .slide.red-bg { background: var(--red); color: white; }
+  .slide.red-bg .slide-lead { color: rgba(255,255,255,0.85); border-left-color: white; }
+  .slide.blue-bg { background: var(--blue); color: white; }
+  .slide.blue-bg .slide-lead { color: rgba(255,255,255,0.85); border-left-color: white; }
+  .slide.green-bg { background: var(--green); color: white; }
+  .slide.green-bg .slide-lead { color: rgba(255,255,255,0.85); border-left-color: white; }
+  .slide.amber-bg { background: var(--amber); color: white; }
+  .slide.amber-bg .slide-lead { color: rgba(255,255,255,0.85); border-left-color: white; }
+  .slide.purple-bg { background: var(--purple); color: white; }
+  .slide.purple-bg .slide-lead { color: rgba(255,255,255,0.85); border-left-color: white; }
+  .slide.dark-bg { background: var(--gray-900); color: white; }
+  .slide.dark-bg .slide-lead { color: rgba(255,255,255,0.7); border-left-color: var(--red); }
+
+  /* Typography */
+  .hero-title {
+    font-size: clamp(3rem, 5.5vw, 5rem);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1.08;
+  }
+  .hero-sub {
+    font-size: clamp(1.1rem, 1.6vw, 1.5rem);
+    color: var(--gray-500);
+    margin-top: 1.5rem;
+    max-width: 70%;
+    line-height: 1.5;
+  }
+  .slide-title {
+    font-size: clamp(2rem, 3.2vw, 2.8rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.75rem;
+  }
+  .slide-lead {
+    font-size: clamp(1rem, 1.3vw, 1.2rem);
+    color: var(--gray-500);
+    border-left: 3px solid var(--red);
+    padding-left: 1rem;
+    margin-bottom: 1.5rem;
+    max-width: 75%;
+    line-height: 1.5;
+  }
+  .section-num {
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    opacity: 0.8;
+    margin-bottom: 0.75rem;
+  }
+  .divider-title {
+    font-size: clamp(2.5rem, 5vw, 4.5rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    max-width: 850px;
+  }
+  .divider-sub {
+    font-size: clamp(1.1rem, 1.4vw, 1.4rem);
+    opacity: 0.85;
+    max-width: 65%;
+    margin-top: 1.5rem;
+    line-height: 1.5;
+  }
+
+  /* Cards */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.25rem;
+    flex: 1;
+    align-content: center;
+  }
+  .card-grid.two { grid-template-columns: 1fr 1fr; }
+  .card-grid.four { grid-template-columns: repeat(2, 1fr); }
+  .card {
+    background: var(--white);
+    border: 1px solid var(--gray-100);
+    border-radius: 10px;
+    padding: 1.5rem;
+  }
+  .card h3 { font-size: clamp(1rem, 1.2vw, 1.2rem); font-weight: 700; margin-bottom: 0.4rem; }
+  .card p { font-size: clamp(0.88rem, 1vw, 1rem); color: var(--gray-500); line-height: 1.5; }
+  .card .card-icon { font-size: clamp(1.3rem, 1.8vw, 1.8rem); margin-bottom: 0.5rem; }
+  .card.highlight { border-color: var(--red); background: var(--red-light); }
+  .card.green-highlight { border-color: var(--green); background: var(--green-light); }
+  .card.amber-highlight { border-color: var(--amber); background: var(--amber-light); }
+  .card.blue-highlight { border-color: var(--blue); background: var(--blue-light); }
+
+  /* Tables */
+  .signal-table, .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: clamp(0.9rem, 1.05vw, 1.05rem);
+  }
+  .signal-table th, .compare-table th {
+    text-align: left;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray-500);
+    padding: 0.7rem 0.8rem;
+    border-bottom: 2px solid var(--gray-300);
+  }
+  .signal-table td, .compare-table td {
+    padding: 0.8rem 0.8rem;
+    border-bottom: 1px solid var(--gray-100);
+    vertical-align: top;
+  }
+  .compare-table tr:hover td { background: var(--red-light); }
+
+  .dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 0.4rem;
+  }
+  .dot.red { background: var(--red); }
+  .dot.amber { background: var(--amber); }
+  .dot.green { background: var(--green); }
+
+  /* Key hint */
+  .key-hint {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.75rem;
+    color: var(--gray-500);
+    opacity: 0.7;
+    transition: opacity 0.5s;
+  }
+
+  /* Stats row */
+  .stats-row {
+    display: flex;
+    gap: 2.5rem;
+    margin: 1.5rem 0;
+  }
+  .stat { text-align: center; }
+  .stat-value {
+    font-size: clamp(2.2rem, 3.5vw, 3rem);
+    font-weight: 700;
+    color: var(--red);
+  }
+  .stat-value.green { color: var(--green); }
+  .stat-value.amber { color: var(--amber); }
+  .stat-label {
+    font-size: 0.85rem;
+    color: var(--gray-500);
+    margin-top: 0.2rem;
+  }
+
+  /* Quote */
+  .quote {
+    font-size: clamp(1.15rem, 1.6vw, 1.5rem);
+    font-style: italic;
+    border-left: 4px solid var(--red);
+    padding-left: 1.5rem;
+    margin: 1.5rem 0;
+    max-width: 85%;
+    color: var(--gray-700);
+  }
+
+  /* Decision box */
+  .decision-box {
+    background: var(--white);
+    border: 2px solid var(--green);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin: 1rem 0;
+  }
+  .decision-box h3 {
+    color: var(--green);
+    font-size: 1rem;
+    margin-bottom: 0.8rem;
+  }
+  .decision-box ul, .decision-box ol {
+    margin-left: 1.5rem;
+  }
+  .decision-box li {
+    margin-bottom: 0.4rem;
+    color: var(--gray-700);
+    font-size: 0.95rem;
+  }
+  .decision-box.red-border { border-color: var(--red); }
+  .decision-box.red-border h3 { color: var(--red); }
+  .decision-box.amber-border { border-color: var(--amber); }
+  .decision-box.amber-border h3 { color: var(--amber); }
+
+  /* Comparison columns */
+  .compare-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-top: 1rem;
+  }
+  .compare-col {
+    background: var(--white);
+    border-radius: 10px;
+    padding: 1.25rem;
+    border: 1px solid var(--gray-100);
+  }
+  .compare-col.believer { border-top: 4px solid var(--green); }
+  .compare-col.skeptic { border-top: 4px solid var(--red); }
+  .compare-col h3 {
+    font-size: 1.1rem;
+    margin-bottom: 0.8rem;
+  }
+  .compare-col ul {
+    margin-left: 1rem;
+    color: var(--gray-700);
+    font-size: 0.92rem;
+  }
+  .compare-col li { margin-bottom: 0.4rem; }
+
+  /* Timeline */
+  .timeline {
+    display: flex;
+    gap: 1rem;
+    margin: 1.5rem 0;
+  }
+  .timeline-item {
+    flex: 1;
+    background: var(--white);
+    border-radius: 10px;
+    padding: 1.25rem;
+    border: 1px solid var(--gray-100);
+    position: relative;
+  }
+  .timeline-item::after {
+    content: '→';
+    position: absolute;
+    right: -0.8rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--gray-300);
+    font-size: 1.2rem;
+  }
+  .timeline-item:last-child::after { display: none; }
+  .timeline-item h4 {
+    font-size: 0.9rem;
+    color: var(--red);
+    margin-bottom: 0.4rem;
+  }
+  .timeline-item p {
+    font-size: 0.85rem;
+    color: var(--gray-700);
+  }
+
+  /* Warning box */
+  .warning-box {
+    background: var(--red-light);
+    border: 1px solid var(--red);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1rem 0;
+  }
+  .warning-box h4 {
+    color: var(--red);
+    font-size: 0.9rem;
+    margin-bottom: 0.4rem;
+  }
+  .warning-box p {
+    font-size: 0.9rem;
+    color: var(--gray-700);
+  }
+
+  /* Round badge */
+  .round-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.2);
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.5rem;
+  }
+</style>
+</head>
+<body>
+
+<!-- Dot navigation -->
+<nav class="dot-nav" id="dot-nav"></nav>
+<div class="key-hint" id="key-hint">Arrow keys or scroll to navigate</div>
+
+<!-- ═══════════ SLIDE 0: TITLE ═══════════ -->
+<div class="slide" id="s0">
+  <h1 class="hero-title">ShovelSense ROI</h1>
+  <p class="hero-sub">A Three-Round Dialectical Analysis: Can XRF sensors on mining shovels deliver ROI for a heterogeneous copper porphyry deposit?</p>
+  <div style="margin-top:2rem">
+    <div class="stats-row">
+      <div class="stat">
+        <div class="stat-value">$200K</div>
+        <div class="stat-label">Monthly Cost</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">0.32%</div>
+        <div class="stat-label">Cu Cutoff Grade</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">$12M</div>
+        <div class="stat-label">5-Year TCO</div>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:2rem;display:flex;gap:1rem">
+    <div style="background:var(--red-light);padding:0.6rem 1rem;border-radius:8px;font-size:0.85rem">
+      <strong>Round 1:</strong> Believer vs Skeptic
+    </div>
+    <div style="background:var(--blue-light);padding:0.6rem 1rem;border-radius:8px;font-size:0.85rem">
+      <strong>Round 2:</strong> Technology Comparison
+    </div>
+    <div style="background:var(--green-light);padding:0.6rem 1rem;border-radius:8px;font-size:0.85rem">
+      <strong>Round 3:</strong> Economics & Implementation
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ SLIDE 1: ROUND 1 INTRO ═══════════ -->
+<div class="slide red-bg" id="s1">
+  <div class="round-badge">ROUND 1</div>
+  <h2 class="divider-title">The Central Question</h2>
+  <p class="divider-sub">Can XRF measure bucket grade accurately enough to justify $2.4M/year? XRF measures surfaces. Buckets contain heterogeneous volumes. The physics creates fundamental uncertainty.</p>
+</div>
+
+<!-- ═══════════ SLIDE 2: XRF PHYSICS ═══════════ -->
+<div class="slide pad-top" id="s2">
+  <div class="slide-title">XRF Physics: The Surface Problem</div>
+  <p class="slide-lead">X-ray fluorescence penetrates only micrometers into rock surfaces. This is why conveyor belt analyzers use neutron-based (PGNAA) technology, not XRF.</p>
+
+  <div class="card-grid two">
+    <div class="card">
+      <div class="card-icon">🔬</div>
+      <h3>What XRF Can Do</h3>
+      <p>Detect copper at &lt;10 ppm with modern SDD detectors. Classification accuracy of 75-93% reported in academic studies depending on cutoff grade.</p>
+    </div>
+    <div class="card highlight">
+      <div class="card-icon">⚠️</div>
+      <h3>The Critical Limitation</h3>
+      <p>Penetration depth: &lt;1mm in copper sulfide ore. Thermo Fisher explicitly states surface technologies "may not be representative of entire material."</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">⚗️</div>
+      <h3>Matrix Effects</h3>
+      <p>Chalcopyrite (80% of deposit) contains 30.5% iron, which absorbs copper X-rays. Creates systematic measurement bias varying by mineralogy.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">❓</div>
+      <h3>No Independent Validation</h3>
+      <p>All ShovelSense performance data originates from MineSense or their commercial partners. Zero peer-reviewed studies after 10+ years.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ SLIDE 3: THE DIALECTIC ═══════════ -->
+<div class="slide pad-top" id="s3">
+  <div class="slide-title">The Believer vs. The Skeptic</div>
+  <p class="slide-lead">Two opposing positions on whether XRF adds signal or noise to the grade control process.</p>
+
+  <div class="compare-cols">
+    <div class="compare-col believer">
+      <h3>The Believer's Case</h3>
+      <ul>
+        <li><strong>Counterfactual framing:</strong> Compare to blast holes (30-70% error), not perfect information</li>
+        <li><strong>Timing advantage:</strong> Belt analyzers measure too late for truck diversion</li>
+        <li><strong>Information fusion:</strong> Two imperfect signals beat one alone</li>
+        <li><strong>Low threshold:</strong> Only 1.7% classification improvement needed for 2x ROI</li>
+      </ul>
+    </div>
+    <div class="compare-col skeptic">
+      <h3>The Skeptic's Case</h3>
+      <ul>
+        <li><strong>Category error:</strong> A bucket has no single grade—only a distribution</li>
+        <li><strong>Industry revealed preference:</strong> Billion-dollar plants use PGNAA, not XRF</li>
+        <li><strong>Validation gap:</strong> No independent evidence after 10+ years</li>
+        <li><strong>Noise risk:</strong> Low correlation = confident wrong answers</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="quote" style="margin-top:1.5rem">
+    "Both monks assume the surface-volume correlation is fixed. But this correlation is measurable, spatially variable, and the critical unknown."
+  </div>
+</div>
+
+<!-- ═══════════ SLIDE 4: ROUND 1 SYNTHESIS ═══════════ -->
+<div class="slide pad-top" id="s4">
+  <div class="slide-title">Round 1 Synthesis: Measure First</div>
+  <p class="slide-lead">The surface-volume correlation is measurable, not assumed. Resolve the epistemic impasse before committing $2.4M/year.</p>
+
+  <div class="card-grid two">
+    <div class="card green-highlight">
+      <h3>What Gets Preserved</h3>
+      <p><strong>From Believer:</strong> Counterfactual framing (vs. blast holes, not perfect info). Timing advantage is real.</p>
+      <p style="margin-top:0.5rem"><strong>From Skeptic:</strong> Unverified claims shouldn't drive million-dollar decisions. Demand evidence.</p>
+    </div>
+    <div class="card amber-highlight">
+      <h3>What Gets Cancelled</h3>
+      <p><strong>From Believer:</strong> Assumption that sensor fusion automatically improves estimates.</p>
+      <p style="margin-top:0.5rem"><strong>From Skeptic:</strong> Assumption that low correlation makes XRF categorically worthless.</p>
+    </div>
+  </div>
+
+  <div class="decision-box" style="margin-top:1.5rem">
+    <h3>Round 1 Recommendation</h3>
+    <p style="color:var(--gray-700);margin-bottom:0.5rem">Run a $150-300K measurement study before committing:</p>
+    <ul>
+      <li>Measure classification accuracy at 0.32% Cu cutoff, stratified by zone</li>
+      <li>Pre-establish decision rules: >80% = deploy, 70-80% = analyze, <70% = reject</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ═══════════ SLIDE 5: ROUND 2 INTRO ═══════════ -->
+<div class="slide blue-bg" id="s5">
+  <div class="round-badge">ROUND 2</div>
+  <h2 class="divider-title">Wrong Technology, Wrong Order</h2>
+  <p class="divider-sub">The question "ShovelSense or not?" assumes it's the reference technology. It's not. It's one option among several, with the weakest independent validation.</p>
+</div>
+
+<!-- ═══════════ SLIDE 6: TECHNOLOGY COMPARISON ═══════════ -->
+<div class="slide pad-top" id="s6">
+  <div class="slide-title">Technology Comparison</div>
+  <p class="slide-lead">XRF (ShovelSense) vs. PGNAA vs. MRT (NextOre) vs. Blast Hole Optimization</p>
+
+  <table class="compare-table">
+    <thead>
+      <tr>
+        <th>Factor</th>
+        <th>ShovelSense (XRF)</th>
+        <th>PGNAA</th>
+        <th>MRT (NextOre)</th>
+        <th>Blast Hole</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Penetration</strong></td>
+        <td><span class="dot red"></span>Surface only</td>
+        <td><span class="dot green"></span>Full bulk</td>
+        <td><span class="dot green"></span>Full bulk</td>
+        <td>N/A</td>
+      </tr>
+      <tr>
+        <td><strong>Decision Point</strong></td>
+        <td><span class="dot green"></span>At loading</td>
+        <td><span class="dot amber"></span>Conveyor</td>
+        <td><span class="dot amber"></span>Conveyor</td>
+        <td>Before mining</td>
+      </tr>
+      <tr>
+        <td><strong>Independent Validation</strong></td>
+        <td><span class="dot red"></span>None</td>
+        <td><span class="dot green"></span>Extensive</td>
+        <td><span class="dot green"></span>Peer-reviewed</td>
+        <td><span class="dot green"></span>Extensive</td>
+      </tr>
+      <tr>
+        <td><strong>5-Year Cost</strong></td>
+        <td><span class="dot red"></span>$12M</td>
+        <td><span class="dot green"></span>$1.8M</td>
+        <td><span class="dot amber"></span>$4M</td>
+        <td><span class="dot green"></span>$1.6M</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="warning-box" style="margin-top:1.5rem">
+    <h4>Key Finding</h4>
+    <p>MRT has peer-reviewed validation at Kansanshi copper mine (±0.028% Cu precision). ShovelSense has zero independent validation after 10+ years of deployment.</p>
+  </div>
+</div>
+
+<!-- ═══════════ SLIDE 7: OPTIMAL ARCHITECTURE ═══════════ -->
+<div class="slide pad-top" id="s7">
+  <div class="slide-title">Optimal Sensor Architecture</div>
+  <p class="slide-lead">Grade control is not a single-sensor problem. It's a distributed sensing system with feedback calibration.</p>
+
+  <div class="timeline">
+    <div class="timeline-item">
+      <h4>Tier 1: Decision Layer</h4>
+      <p><strong>Shovel XRF</strong><br>Real-time at loading<br>$2.4M/year</p>
+    </div>
+    <div class="timeline-item">
+      <h4>Tier 2: Verification Layer</h4>
+      <p><strong>Belt PGNAA</strong><br>0.02% Cu precision<br>$0.5M capital</p>
+    </div>
+    <div class="timeline-item">
+      <h4>Tier 3: Calibration Layer</h4>
+      <p><strong>Mill Reconciliation</strong><br>Ground truth<br>Existing infra</p>
+    </div>
+  </div>
+
+  <div class="quote" style="margin-top:1rem">
+    "Deploy belt analyzer FIRST. You need ground truth before you can calibrate any upstream sensor."
+  </div>
+
+  <div class="decision-box" style="margin-top:1rem">
+    <h3>Round 2 Recommendation</h3>
+    <ul>
+      <li><strong>Step 1:</strong> Assess your baseline (F1 factor, misclassification rate)</li>
+      <li><strong>Step 2:</strong> Deploy belt analyzer (~$800K) for ground truth</li>
+      <li><strong>Step 3:</strong> Only then pilot XRF with belt-based calibration</li>
+      <li><strong>Consider MRT first</strong> — better validation than ShovelSense</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ═══════════ SLIDE 8: ROUND 3 INTRO ═══════════ -->
+<div class="slide green-bg" id="s8">
+  <div class="round-badge">ROUND 3</div>
+  <h2 class="divider-title">The Economics Don't Work</h2>
+  <p class="divider-sub">ShovelSense costs 6-7x more than alternatives, requires 7x the improvement to break even, and has the weakest validation evidence.</p>
+</div>
+
+<!-- ═══════════ SLIDE 9: 5-YEAR TCO ═══════════ -->
+<div class="slide pad-top" id="s9">
+  <div class="slide-title">5-Year Total Cost of Ownership</div>
+  <p class="slide-lead">ShovelSense costs 6-7x more than any alternative over 5 years.</p>
+
+  <table class="compare-table">
+    <thead>
+      <tr>
+        <th>Technology</th>
+        <th>5-Year TCO</th>
+        <th>Required Grade Improvement</th>
+        <th>Success Probability</th>
+        <th>Risk-Adjusted EV</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="background:var(--red-light)">
+        <td><strong>ShovelSense</strong></td>
+        <td>$12.0M</td>
+        <td>0.033% Cu (7.3% relative)</td>
+        <td>35%</td>
+        <td><strong>$0.8M</strong></td>
+      </tr>
+      <tr>
+        <td><strong>MRT (NextOre)</strong></td>
+        <td>$4.0M</td>
+        <td>0.011% Cu (2.4% relative)</td>
+        <td>65%</td>
+        <td><strong>$4.4M</strong></td>
+      </tr>
+      <tr style="background:var(--green-light)">
+        <td><strong>PGNAA</strong></td>
+        <td>$1.8M</td>
+        <td>0.005% Cu (1.1% relative)</td>
+        <td>75%</td>
+        <td><strong>$4.1M</strong></td>
+      </tr>
+      <tr>
+        <td><strong>Blast Hole Optimization</strong></td>
+        <td>$1.6M</td>
+        <td>0.004% Cu (1.0% relative)</td>
+        <td>60%</td>
+        <td><strong>$2.3M</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div style="margin-top:1.5rem">
+    <div class="stats-row" style="justify-content:center">
+      <div class="stat">
+        <div class="stat-value">6-7x</div>
+        <div class="stat-label">More Expensive</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">7x</div>
+        <div class="stat-label">Higher Breakeven</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value green">5x</div>
+        <div class="stat-label">Better EV with PGNAA</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ SLIDE 10: BLAST HOLE OPTIMIZATION ═══════════ -->
+<div class="slide pad-top" id="s10">
+  <div class="slide-title">Blast Hole Optimization: Low-Cost First Step</div>
+  <p class="slide-lead">10-20% misclassification reduction at roughly one-sixth the cost of ShovelSense.</p>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-icon">💥</div>
+      <h3>Blast Movement Monitoring</h3>
+      <p>Hexagon BMM measures actual ore displacement post-blast. Cowal mine: 7% head grade improvement. $150-300K/year.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🧪</div>
+      <h3>Sampling Protocol</h3>
+      <p>Spear pipe sampling with 12-stab protocol. 5-15% reduction in fundamental sampling error. ~$50K investment.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">📱</div>
+      <h3>Portable XRF Screening</h3>
+      <p>Field XRF for immediate ore/waste flagging. >0.98 correlation with lab. Reduces turnaround from days to seconds.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">📍</div>
+      <h3>GPS Dig Guidance</h3>
+      <p>Centimeter-level positioning on shovels. Near-elimination of dig line execution error. ~$200-400K.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🤖</div>
+      <h3>ML-Enhanced Geostatistics</h3>
+      <p>Neural networks + co-kriging improve grade modeling. Demonstrated at Carmen de Andacollo copper mine.</p>
+    </div>
+    <div class="card green-highlight">
+      <div class="card-icon">💰</div>
+      <h3>Total Program</h3>
+      <p><strong>$400-700K + $300K/year</strong><br>10-20% misclassification reduction<br>1/6th cost of ShovelSense</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ SLIDE 11: MRT LIMITATION ═══════════ -->
+<div class="slide pad-top" id="s11">
+  <div class="slide-title">MRT Limitation: Bornite Blindness</div>
+  <p class="slide-lead">Despite superior validation, MRT cannot detect bornite. Your 20% bornite content creates systematic measurement error.</p>
+
+  <div class="compare-cols">
+    <div class="compare-col believer">
+      <h3>What MRT Does Well</h3>
+      <ul>
+        <li>Peer-reviewed validation at Kansanshi (±0.028% Cu)</li>
+        <li>Volumetric measurement (no surface limitation)</li>
+        <li>Measures chalcopyrite specifically</li>
+        <li>Operational at 2,800+ t/h scale</li>
+      </ul>
+    </div>
+    <div class="compare-col skeptic">
+      <h3>The Bornite Problem</h3>
+      <ul>
+        <li>MRT tuned for specific mineral resonance</li>
+        <li>Bornite (Cu₅FeS₄) has different signature</li>
+        <li>Your 20% bornite = 20% copper invisible</li>
+        <li>Would systematically misclassify ore as waste</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="decision-box amber-border" style="margin-top:1.5rem">
+    <h3>What This Means</h3>
+    <p style="color:var(--gray-700)"><strong>MRT cannot be standalone technology for this deposit.</strong> PGNAA measures total copper regardless of mineralogy (chalcopyrite + bornite). The 20% bornite content makes PGNAA the better choice for ground truth, with MRT as potential supplement for high-throughput sorting in chalcopyrite-dominant zones.</p>
+  </div>
+</div>
+
+<!-- ═══════════ SLIDE 12: IMPLEMENTATION FAILURES ═══════════ -->
+<div class="slide pad-top" id="s12">
+  <div class="slide-title">Six Ways Deployments Fail</div>
+  <p class="slide-lead">Technology works in isolation but fails at integration boundaries. These failure modes kill ROI regardless of technology choice.</p>
+
+  <div class="card-grid">
+    <div class="card">
+      <h3>1. Operator Bypass</h3>
+      <p>Experienced operators override sensors based on intuition. Without trust-building, they find workarounds.</p>
+    </div>
+    <div class="card">
+      <h3>2. Integration Fragmentation</h3>
+      <p>Sensors, dispatch, block models, mill systems rarely share data models. Which system wins when they disagree?</p>
+    </div>
+    <div class="card">
+      <h3>3. Calibration Decay</h3>
+      <p>Without continuous recalibration, accuracy degrades over months. Mining into new zones invalidates old calibration.</p>
+    </div>
+    <div class="card">
+      <h3>4. Set-and-Forget Trap</h3>
+      <p>Metrics tracked in Q1, then attention shifts. By month 18, nobody can prove ROI because measurement stopped.</p>
+    </div>
+    <div class="card">
+      <h3>5. Training Failure</h3>
+      <p>Vendor training focuses on displays, not workflows. Operators don't know when to trust vs. override.</p>
+    </div>
+    <div class="card">
+      <h3>6. Metric Mismatch</h3>
+      <p>Vendors optimize adoption (tonnage scanned). Mines need value (misclassification rate). Different goals, different outcomes.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ SLIDE 13: FINAL SYNTHESIS ═══════════ -->
+<div class="slide dark-bg" id="s13">
+  <div class="round-badge">FINAL SYNTHESIS</div>
+  <h2 class="divider-title">Don't Buy ShovelSense</h2>
+  <p class="divider-sub">Not because it doesn't work—it might. But because better-validated alternatives exist at 1/6th the cost, and your 20% bornite suggests surface-based XRF may also struggle.</p>
+</div>
+
+<!-- ═══════════ SLIDE 14: THE RECOMMENDED PATH ═══════════ -->
+<div class="slide pad-top" id="s14">
+  <div class="slide-title">The Recommended Path</div>
+  <p class="slide-lead">Three phases over 24-36 months. Total cost: ~$3.4M over 5 years vs. $12M for ShovelSense.</p>
+
+  <div class="decision-box" style="margin-bottom:1rem">
+    <h3>Phase 1: Optimize What You Have (Months 1-12)</h3>
+    <p style="color:var(--gray-700);margin-bottom:0.3rem"><strong>Investment:</strong> $400-700K capital + $300K/year</p>
+    <ul>
+      <li>Baseline assessment: Know your actual F1 factor</li>
+      <li>Blast movement monitoring: 5-7% misclassification reduction</li>
+      <li>Sampling protocol upgrade + portable XRF screening</li>
+      <li>GPS dig guidance on primary shovels</li>
+    </ul>
+  </div>
+
+  <div class="decision-box amber-border" style="margin-bottom:1rem">
+    <h3>Phase 2: Ground Truth Measurement (Months 12-24)</h3>
+    <p style="color:var(--gray-700);margin-bottom:0.3rem"><strong>Investment:</strong> ~$800K capital + installation</p>
+    <ul>
+      <li>Deploy PGNAA belt analyzer (measures total copper: chalcopyrite + bornite)</li>
+      <li>Provides reconciliation data for blast hole calibration</li>
+      <li>Enables empirical validation of any shovel-mounted sensor</li>
+    </ul>
+  </div>
+
+  <div class="decision-box red-border">
+    <h3>Phase 3: Evaluate Shovel Sensing — Maybe (Months 24-36)</h3>
+    <p style="color:var(--gray-700);margin-bottom:0.3rem"><strong>Only if</strong> Phase 1+2 show residual misclassification worth capturing AND belt data proves surface-volume correlation exists.</p>
+    <ul>
+      <li>Request independent ShovelSense validation (currently none exists)</li>
+      <li>Or wait for NextOre bornite-capable MRT development</li>
+      <li>Otherwise: stop at Phase 2—problem may be solved</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ═══════════ SLIDE 15: IMPLEMENTATION CHECKLIST ═══════════ -->
+<div class="slide pad-top" id="s15">
+  <div class="slide-title">Implementation Checklist</div>
+  <p class="slide-lead">Regardless of which technology you select, these 10 actions maximize probability of success.</p>
+
+  <div class="card-grid two">
+    <div class="card">
+      <h3>Before Purchase</h3>
+      <ol style="margin-left:1.2rem;color:var(--gray-700);font-size:0.9rem">
+        <li>Measure baseline misclassification rate</li>
+        <li>Define success metrics in contract with measurement protocol</li>
+        <li>Include performance-based exit clauses (not just uptime)</li>
+        <li>Require independent validation before full commitment</li>
+        <li>Define data hierarchy: which system wins when they disagree?</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>During Deployment</h3>
+      <ol start="6" style="margin-left:1.2rem;color:var(--gray-700);font-size:0.9rem">
+        <li>Start in advisory mode for 6+ months</li>
+        <li>Assign a single calibration owner (person, not committee)</li>
+        <li>Require workflow-focused training, not just technology</li>
+        <li>Budget 15-20% of annual cost for ongoing calibration</li>
+        <li>Mandate quarterly performance reviews with go/no-go decisions</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="warning-box" style="margin-top:1.5rem">
+    <h4>The $12M Question</h4>
+    <p>The $12M saved by avoiding ShovelSense could fund PGNAA + blast hole optimization combined, with money left over for Phase 3 evaluation if needed.</p>
+  </div>
+</div>
+
+<!-- ═══════════ SLIDE 16: CONCLUSION ═══════════ -->
+<div class="slide" id="s16">
+  <div class="slide-title">Answering the Original Question</div>
+  <p class="slide-lead">"If ShovelSense costs $200K/month, would there be a decent return on investment?"</p>
+
+  <div style="text-align:center;margin:2rem 0">
+    <div style="font-size:clamp(3rem,5vw,4.5rem);font-weight:700;color:var(--red)">No.</div>
+  </div>
+
+  <div class="card-grid two" style="margin-top:1rem">
+    <div class="card">
+      <h3>Why Not</h3>
+      <ul style="margin-left:1rem;color:var(--gray-700);font-size:0.9rem">
+        <li>Zero independent validation after 10+ years</li>
+        <li>Requires 7.3% grade improvement to break even—implausible</li>
+        <li>Better-validated alternatives at 1/6th cost</li>
+        <li>20% bornite suggests XRF may also struggle</li>
+      </ul>
+    </div>
+    <div class="card green-highlight">
+      <h3>What To Do Instead</h3>
+      <ul style="margin-left:1rem;color:var(--gray-700);font-size:0.9rem">
+        <li>Invest $400-700K in blast hole optimization</li>
+        <li>Deploy $800K PGNAA belt analyzer</li>
+        <li>Total: $3.4M over 5 years vs. $12M</li>
+        <li>Higher probability of success</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="quote" style="margin-top:2rem;text-align:center;border-left:none;padding:0">
+    "Don't buy ShovelSense. Optimize blast holes first, deploy PGNAA for ground truth, and only evaluate shovel-level sensing after you have empirical data from your own deposit."
+  </div>
+</div>
+
+<script>
+(function() {
+  const slides = document.querySelectorAll('.slide');
+  const nav = document.getElementById('dot-nav');
+  const hint = document.getElementById('key-hint');
+
+  // Build dot nav
+  slides.forEach((_, i) => {
+    const a = document.createElement('a');
+    a.href = '#s' + i;
+    if (i === 0) a.classList.add('active');
+    nav.appendChild(a);
+  });
+  const dots = nav.querySelectorAll('a');
+
+  // Track active slide
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const idx = Array.from(slides).indexOf(entry.target);
+        dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+        if (idx > 0) hint.style.opacity = '0';
+      }
+    });
+  }, { threshold: 0.55 });
+  slides.forEach(s => observer.observe(s));
+
+  // Arrow key navigation
+  let current = 0;
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
+      e.preventDefault();
+      current = Math.min(current + 1, slides.length - 1);
+      slides[current].scrollIntoView({ behavior: 'smooth' });
+    } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+      e.preventDefault();
+      current = Math.max(current - 1, 0);
+      slides[current].scrollIntoView({ behavior: 'smooth' });
+    }
+  });
+
+  // Keep current in sync with scroll
+  const scrollObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        current = Array.from(slides).indexOf(entry.target);
+      }
+    });
+  }, { threshold: 0.55 });
+  slides.forEach(s => scrollObserver.observe(s));
+})();
+</script>
+
+</body>
+</html>
