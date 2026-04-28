@@ -16,6 +16,7 @@ export DATABRICKS_CONFIG_PROFILE := "fevm-cjc"
 export CATALOG := "cjc_aws_workspace_catalog"
 export SCHEMA := "shovelsense"
 export VOLUME_PATH := "/Volumes/cjc_aws_workspace_catalog/shovelsense/raw_data"
+export WAREHOUSE_ID := "751fe324525584e5"
 
 # Default recipe
 default:
@@ -27,17 +28,22 @@ setup:
     databricks auth describe --profile {{DATABRICKS_CONFIG_PROFILE}}
     @echo "Connection validated!"
 
+# Helper to run SQL via API (warehouse starts on demand)
+# Returns 0 on success, 1 on failure (unless object already exists)
+_run-sql stmt:
+    databricks api post /api/2.0/sql/statements --profile {{DATABRICKS_CONFIG_PROFILE}} \
+        --json '{"warehouse_id": "{{WAREHOUSE_ID}}", "statement": "{{stmt}}", "wait_timeout": "50s", "on_wait_timeout": "CANCEL"}' 2>&1 \
+        | python3 -c "import json,sys; txt=sys.stdin.read(); r=json.loads(txt) if txt.strip().startswith('{') else {'status':{'state':'ERROR'},'message':txt}; s=r.get('status',{}).get('state','UNKNOWN'); e=r.get('status',{}).get('error',{}).get('message',''); already_exists='already exists' in e.lower() or 'SCHEMA_ALREADY_EXISTS' in e or 'CATALOG_ALREADY_EXISTS' in e; print(f'  {\"EXISTS\" if already_exists else s}: {{stmt}}'[:80]); sys.exit(0 if s in ['SUCCEEDED','CLOSED'] or already_exists else 1)"
+
 # Create catalog, schema, and volumes in Databricks
 create-infra:
     @echo "Creating infrastructure in Databricks..."
-    databricks sql execute --profile {{DATABRICKS_CONFIG_PROFILE}} \
-        --statement "CREATE CATALOG IF NOT EXISTS {{CATALOG}}"
-    databricks sql execute --profile {{DATABRICKS_CONFIG_PROFILE}} \
-        --statement "CREATE SCHEMA IF NOT EXISTS {{CATALOG}}.{{SCHEMA}}"
-    databricks sql execute --profile {{DATABRICKS_CONFIG_PROFILE}} \
-        --statement "CREATE VOLUME IF NOT EXISTS {{CATALOG}}.{{SCHEMA}}.raw_data"
-    databricks sql execute --profile {{DATABRICKS_CONFIG_PROFILE}} \
-        --statement "CREATE VOLUME IF NOT EXISTS {{CATALOG}}.{{SCHEMA}}.pdf_documents"
+    @echo "  Catalog {{CATALOG}}..."
+    just _run-sql "CREATE SCHEMA IF NOT EXISTS {{CATALOG}}.{{SCHEMA}}"
+    @echo "  Volume raw_data..."
+    just _run-sql "CREATE VOLUME IF NOT EXISTS {{CATALOG}}.{{SCHEMA}}.raw_data"
+    @echo "  Volume pdf_documents..."
+    just _run-sql "CREATE VOLUME IF NOT EXISTS {{CATALOG}}.{{SCHEMA}}.pdf_documents"
     @echo "Infrastructure created!"
 
 # Generate synthetic XRF and mining operations data
@@ -81,7 +87,7 @@ validate-all:
 # Verify tables exist in Databricks
 verify-tables:
     @echo "Verifying tables in {{CATALOG}}.{{SCHEMA}}..."
-    databricks api post /api/2.0/sql/statements --profile {{DATABRICKS_CONFIG_PROFILE}} --json '{"warehouse_id": "751fe324525584e5", "statement": "SHOW TABLES IN {{CATALOG}}.{{SCHEMA}}", "wait_timeout": "30s"}' | python -c "import json,sys; d=json.load(sys.stdin); tables=[r[1] for r in d.get('result',{}).get('data_array',[])]; print(f'Found {len(tables)} tables:'); [print(f'  - {t}') for t in sorted(tables)]"
+    databricks api post /api/2.0/sql/statements --profile {{DATABRICKS_CONFIG_PROFILE}} --json '{"warehouse_id": "{{WAREHOUSE_ID}}", "statement": "SHOW TABLES IN {{CATALOG}}.{{SCHEMA}}", "wait_timeout": "50s", "on_wait_timeout": "CANCEL"}' 2>&1 | python3 -c "import json,sys; d=json.load(sys.stdin); tables=[r[1] for r in d.get('result',{}).get('data_array',[])]; print(f'Found {len(tables)} tables:'); [print(f'  - {t}') for t in sorted(tables)]"
 
 # Deploy Databricks Asset Bundle
 deploy:
@@ -121,6 +127,5 @@ list-data:
 drop-data:
     @echo "WARNING: This will delete all data in {{CATALOG}}.{{SCHEMA}}"
     @read -P "Type 'yes' to confirm: " confirm; and test "$confirm" = "yes"; or exit 1
-    databricks sql execute --profile {{DATABRICKS_CONFIG_PROFILE}} \
-        --statement "DROP SCHEMA IF EXISTS {{CATALOG}}.{{SCHEMA}} CASCADE"
+    just _run-sql "DROP SCHEMA IF EXISTS {{CATALOG}}.{{SCHEMA}} CASCADE"
     @echo "Schema dropped!"
