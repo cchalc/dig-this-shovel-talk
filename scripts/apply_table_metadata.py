@@ -414,6 +414,149 @@ def apply_table_tags(client) -> tuple[int, int]:
     return success, failed
 
 
+def create_data_dictionary(client, table_types: dict[str, str]) -> tuple[int, int]:
+    """Create and populate a data dictionary table with column descriptions."""
+    print("\n" + "=" * 70)
+    print("CREATING DATA DICTIONARY TABLE")
+    print("=" * 70)
+
+    full_table = f"{CATALOG}.{SCHEMA}.data_dictionary"
+
+    # Drop and recreate the table
+    drop_sql = f"DROP TABLE IF EXISTS {full_table}"
+    run_sql(client, drop_sql, "Drop existing data_dictionary")
+
+    create_sql = f"""
+        CREATE TABLE {full_table} (
+            table_name STRING NOT NULL COMMENT 'Name of the table',
+            column_name STRING NOT NULL COMMENT 'Name of the column',
+            column_position INT COMMENT 'Position of column in table (1-based)',
+            data_type STRING COMMENT 'SQL data type of the column',
+            description STRING COMMENT 'Human-readable description of the column',
+            is_primary_key BOOLEAN COMMENT 'Whether this column is a primary key',
+            is_foreign_key BOOLEAN COMMENT 'Whether this column is a foreign key',
+            foreign_key_table STRING COMMENT 'Referenced table if foreign key',
+            dialectic_reference STRING COMMENT 'Reference to dialectical analysis round',
+            updated_at TIMESTAMP COMMENT 'When this entry was last updated'
+        )
+        USING DELTA
+        COMMENT 'Data dictionary containing column descriptions for all pipeline tables. Workaround for materialized view column comment limitation.'
+        TBLPROPERTIES (
+            'delta.columnMapping.mode' = 'name'
+        )
+    """
+
+    if not run_sql(client, create_sql, "Create data_dictionary table"):
+        print("  ERROR: Failed to create data_dictionary table")
+        return 0, 1
+
+    print("  Created data_dictionary table")
+
+    # Build insert statements for all documented columns
+    success = 0
+    failed = 0
+
+    # Get column info from information_schema for each table
+    for table_name, columns in COLUMN_COMMENTS.items():
+        # Query actual column info from the table
+        col_info_sql = f"""
+            SELECT column_name, ordinal_position, data_type
+            FROM {CATALOG}.information_schema.columns
+            WHERE table_schema = '{SCHEMA}' AND table_name = '{table_name}'
+        """
+
+        col_info = {}
+        try:
+            response = client.statement_execution.execute_statement(
+                warehouse_id=WAREHOUSE_ID,
+                statement=col_info_sql,
+                wait_timeout="50s",
+            )
+            if response.status.state in [StatementState.SUCCEEDED, StatementState.CLOSED]:
+                if response.result and response.result.data_array:
+                    for row in response.result.data_array:
+                        col_info[row[0]] = {"position": row[1], "data_type": row[2]}
+        except Exception as e:
+            print(f"  Warning: Could not get column info for {table_name}: {e}")
+
+        # Insert each column
+        for col_name, description in columns.items():
+            info = col_info.get(col_name, {"position": None, "data_type": None})
+
+            # Determine if primary/foreign key based on naming conventions
+            is_pk = col_name.endswith("_id") and col_name in ["load_id", "measurement_id", "block_id", "shovel_id", "truck_id"]
+            is_fk = col_name.endswith("_id") or col_name.endswith("_key")
+            fk_table = None
+            if is_fk and not is_pk:
+                if col_name == "load_date_key" or col_name == "measurement_date_key":
+                    fk_table = "dim_date"
+                elif col_name == "shovel_id" and table_name != "dim_shovels":
+                    fk_table = "dim_shovels"
+                elif col_name == "truck_id" and table_name != "dim_trucks":
+                    fk_table = "dim_trucks"
+                elif col_name == "block_id" and table_name != "dim_block_model":
+                    fk_table = "dim_block_model"
+
+            # Determine dialectic reference from description
+            dialectic_ref = None
+            if "Round 1" in description:
+                dialectic_ref = "Round 1"
+            elif "Round 2" in description:
+                dialectic_ref = "Round 2"
+            elif "Round 3" in description:
+                dialectic_ref = "Round 3"
+            elif "Critical Assessment" in description:
+                dialectic_ref = "Critical Assessment"
+
+            # Escape quotes
+            escaped_desc = description.replace("'", "''")
+
+            insert_sql = f"""
+                INSERT INTO {full_table}
+                (table_name, column_name, column_position, data_type, description,
+                 is_primary_key, is_foreign_key, foreign_key_table, dialectic_reference, updated_at)
+                VALUES (
+                    '{table_name}',
+                    '{col_name}',
+                    {info['position'] if info['position'] else 'NULL'},
+                    {f"'{info['data_type']}'" if info['data_type'] else 'NULL'},
+                    '{escaped_desc}',
+                    {str(is_pk).lower()},
+                    {str(is_fk).lower()},
+                    {f"'{fk_table}'" if fk_table else 'NULL'},
+                    {f"'{dialectic_ref}'" if dialectic_ref else 'NULL'},
+                    current_timestamp()
+                )
+            """
+
+            if run_sql(client, insert_sql, f"Insert {table_name}.{col_name}"):
+                success += 1
+            else:
+                failed += 1
+
+        print(f"  {table_name}: {len(columns)} columns")
+
+    # Add column comments to the data_dictionary table itself
+    print("\n  Adding column comments to data_dictionary table...")
+    dd_columns = {
+        "table_name": "Name of the table",
+        "column_name": "Name of the column",
+        "column_position": "Position of column in table (1-based)",
+        "data_type": "SQL data type of the column",
+        "description": "Human-readable description of the column",
+        "is_primary_key": "Whether this column is a primary key",
+        "is_foreign_key": "Whether this column is a foreign key",
+        "foreign_key_table": "Referenced table if foreign key",
+        "dialectic_reference": "Reference to dialectical analysis round",
+        "updated_at": "When this entry was last updated",
+    }
+    for col, comment in dd_columns.items():
+        sql = f"ALTER TABLE {full_table} ALTER COLUMN {col} COMMENT '{comment}'"
+        run_sql(client, sql, f"data_dictionary.{col}")
+
+    return success, failed
+
+
 def main():
     print("=" * 70)
     print("ShovelSense Delta Table Metadata Application")
@@ -444,18 +587,23 @@ def main():
     # Apply column comments (only to tables, not views)
     col_success, col_failed, col_skipped = apply_column_comments(client, table_types)
 
+    # Create data dictionary table
+    dd_success, dd_failed = create_data_dictionary(client, table_types)
+
     # Summary
     print("\n" + "=" * 70)
     print("SUMMARY")
     print("=" * 70)
-    print(f"Table comments: {table_success} succeeded, {table_failed} failed")
-    print(f"Table tags:     {tag_success} succeeded, {tag_failed} failed")
-    print(f"Column comments: {col_success} succeeded, {col_failed} failed, {col_skipped} skipped (views)")
+    print(f"Table comments:   {table_success} succeeded, {table_failed} failed")
+    print(f"Table tags:       {tag_success} succeeded, {tag_failed} failed")
+    print(f"Column comments:  {col_success} succeeded, {col_failed} failed, {col_skipped} skipped (views)")
+    print(f"Data dictionary:  {dd_success} columns inserted, {dd_failed} failed")
 
     if col_skipped > 0:
         print(f"\nNote: {col_skipped} column comments were skipped because DLT creates")
-        print("materialized views, not tables. Column documentation is available in:")
-        print("  docs/pipeline-documentation.md")
+        print("materialized views, not tables. Column descriptions are now available in:")
+        print(f"  - {CATALOG}.{SCHEMA}.data_dictionary (queryable table)")
+        print("  - docs/pipeline-documentation.md")
 
     if table_failed > 0:
         print("\nSome table comments failed. Check permissions and table existence.")
