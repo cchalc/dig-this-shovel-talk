@@ -37,24 +37,57 @@ The following metadata is visible in Databricks Unity Catalog:
 
 ### Column Comments Limitation
 
-**Column comments are NOT visible in Unity Catalog** for tables in this pipeline.
+**Column comments are NOT visible in Unity Catalog** for the pipeline tables (materialized views).
 
-**Why:** Databricks Spark Declarative Pipelines creates all tables as **materialized views**, not regular Delta tables. Unity Catalog's `ALTER TABLE ALTER COLUMN ... COMMENT` syntax only works on regular tables, not views. The column metadata defined in schema definitions does not persist through the DLT materialization process.
+**Why:** Databricks Spark Declarative Pipelines creates all tables as **materialized views**, not regular Delta tables. Unity Catalog's `ALTER TABLE ALTER COLUMN ... COMMENT` syntax only works on regular tables, not views.
 
-**Where column descriptions ARE documented:**
-1. **In the pipeline code** — `bundles/src/shovelsense_pipeline.py` contains explicit `StructType` schemas with column comments in metadata (e.g., `FACT_TRUCK_LOADS_SCHEMA`)
-2. **In this document** — All column descriptions are listed in the table sections below
+### Data Dictionary Table
 
-**Example from pipeline code:**
-```python
-FACT_TRUCK_LOADS_SCHEMA = StructType([
-    StructField("load_id", StringType(), True, _meta("Primary key. Unique identifier for truck load.")),
-    StructField("avg_cu_grade_pct", DoubleType(), True, _meta("Average XRF-measured copper grade across all buckets.")),
-    # ... etc
-])
+As a workaround, a **queryable data dictionary table** is available:
+
+```sql
+SELECT table_name, column_name, data_type, description
+FROM cjc_aws_workspace_catalog.shovelsense.data_dictionary
+WHERE table_name = 'fact_truck_loads'
+ORDER BY column_position;
 ```
 
-This is a known Databricks limitation. If column comments in Unity Catalog are required, the pipeline would need to be refactored to create regular Delta tables instead of using Declarative Pipelines' default materialized view approach.
+The `data_dictionary` table contains:
+
+| Column | Description |
+|--------|-------------|
+| `table_name` | Name of the documented table |
+| `column_name` | Column name |
+| `column_position` | Position in table (1-based) |
+| `data_type` | SQL data type |
+| `description` | Human-readable column description |
+| `is_primary_key` | Whether column is a primary key |
+| `is_foreign_key` | Whether column is a foreign key |
+| `foreign_key_table` | Referenced table if FK |
+| `dialectic_reference` | Link to dialectical analysis (Round 1, 2, 3) |
+
+**Example queries:**
+
+```sql
+-- Find all XRF-related columns
+SELECT table_name, column_name, description
+FROM cjc_aws_workspace_catalog.shovelsense.data_dictionary
+WHERE description LIKE '%XRF%';
+
+-- Find columns tied to Round 1 analysis
+SELECT table_name, column_name, description
+FROM cjc_aws_workspace_catalog.shovelsense.data_dictionary
+WHERE dialectic_reference = 'Round 1';
+
+-- Get foreign key relationships
+SELECT table_name, column_name, foreign_key_table
+FROM cjc_aws_workspace_catalog.shovelsense.data_dictionary
+WHERE is_foreign_key = true AND foreign_key_table IS NOT NULL;
+```
+
+**Other documentation sources:**
+1. **Pipeline code** — `bundles/src/shovelsense_pipeline.py` contains `StructType` schemas with column metadata
+2. **This document** — All column descriptions are listed in the table sections below
 
 ---
 
