@@ -5,6 +5,20 @@
 
 ---
 
+## Pending Setup: Fizzy Webhook Integration
+
+Code is ready in `integrations/fizzy-webhooks/`. Complete these steps to activate:
+
+- [ ] Deploy webhook receiver (local with ngrok, or to cloud)
+- [ ] Configure Fizzy webhook in board settings (click "world" icon)
+- [ ] Copy signing secret to `integrations/fizzy-webhooks/.env`
+- [ ] (Optional) Set up Twilio WhatsApp sandbox
+- [ ] Test with a card move in Fizzy
+
+See `integrations/fizzy-webhooks/README.md` for full instructions.
+
+---
+
 ## Phase 1: Foundation (High Priority)
 
 ### D1: Confusion Matrix Deep Dive
