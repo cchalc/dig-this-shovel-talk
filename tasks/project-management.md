@@ -35,7 +35,26 @@
 
 - **Developers**: Work in GitHub Issues
 - **Business Users**: Track progress in Fizzy
-- **Sync**: Manual - each Fizzy card contains GitHub issue URL in description
+- **Sync**: Webhook-based (see below) + manual fallback
+
+## Webhook Integration
+
+Located in `integrations/fizzy-webhooks/`:
+
+| File | Purpose |
+|------|---------|
+| `webhook_receiver.py` | Flask server receiving Fizzy webhooks |
+| `github_sync.py` | GitHub Projects v2 GraphQL sync |
+| `whatsapp_notify.py` | Twilio WhatsApp notifications |
+| `README.md` | Setup and deployment instructions |
+
+**Fizzy → GitHub sync:**
+- `card_closed` → Close issue, set status "Done"
+- `card_triaged` → Update project status
+- `card_assigned` → Comment with assignee
+- `comment_created` → Sync comment to issue
+
+**WhatsApp notifications** sent for: card_closed, card_assigned, comment_created
 
 ## Credentials
 
@@ -43,4 +62,14 @@ Fizzy API credentials stored in `.envrc` (gitignored):
 ```
 FIZZY_TOKEN
 FIZZY_ACCOUNT
+```
+
+Webhook integration credentials in `integrations/fizzy-webhooks/.env` (gitignored):
+```
+FIZZY_SIGNING_SECRET
+GITHUB_TOKEN
+TWILIO_ACCOUNT_SID
+TWILIO_AUTH_TOKEN
+WHATSAPP_FROM
+WHATSAPP_TO
 ```
