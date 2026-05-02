@@ -1025,3 +1025,165 @@ def summary_overall_performance():
     )
 
     return daily_agg.crossJoin(accuracy_agg).crossJoin(economic_agg)
+
+
+# =============================================================================
+# D1: CLASSIFICATION ANALYSIS VIEWS (Research Analysis Plan)
+# =============================================================================
+
+@dp.materialized_view(
+    name="fact_shovel_classification_accuracy",
+    comment="Classification accuracy metrics by shovel - supports D1 confusion matrix drill-down"
+)
+def fact_shovel_classification_accuracy():
+    """
+    Classification accuracy stratified by shovel.
+
+    From D1 Requirements:
+    - Confusion matrix drill-down by shovel
+    - Compare equipment performance
+    - Identify underperforming shovels for investigation
+    """
+    return (
+        spark.read.table("fact_truck_loads")
+        .groupBy("shovel_id")
+        .agg(
+            F.count("*").alias("total_loads"),
+            # Confusion matrix components
+            F.sum(F.when(
+                (F.col("planned_classification") == "ORE") &
+                (F.col("shovelsense_classification") == "ORE"), 1
+            ).otherwise(0)).alias("true_positive"),
+            F.sum(F.when(
+                (F.col("planned_classification") == "WASTE") &
+                (F.col("shovelsense_classification") == "WASTE"), 1
+            ).otherwise(0)).alias("true_negative"),
+            F.sum(F.when(
+                (F.col("planned_classification") == "WASTE") &
+                (F.col("shovelsense_classification") == "ORE"), 1
+            ).otherwise(0)).alias("false_positive"),
+            F.sum(F.when(
+                (F.col("planned_classification") == "ORE") &
+                (F.col("shovelsense_classification") == "WASTE"), 1
+            ).otherwise(0)).alias("false_negative"),
+            # XRF quality metrics
+            F.avg("avg_xrf_confidence").alias("avg_xrf_confidence"),
+            F.avg("surface_volume_correlation").alias("avg_sv_correlation"),
+            # Economic metrics
+            F.sum("estimated_cu_value_usd").alias("total_cu_value_usd"),
+            F.sum("payload_tonnes").alias("total_tonnes")
+        )
+        .withColumn("accuracy",
+            (F.col("true_positive") + F.col("true_negative")) / F.col("total_loads"))
+        .withColumn("precision_ore",
+            F.col("true_positive") / (F.col("true_positive") + F.col("false_positive")))
+        .withColumn("recall_ore",
+            F.col("true_positive") / (F.col("true_positive") + F.col("false_negative")))
+        .withColumn("f1_score",
+            2 * F.col("precision_ore") * F.col("recall_ore") /
+            (F.col("precision_ore") + F.col("recall_ore")))
+        .withColumn("diversion_rate",
+            (F.col("false_positive") + F.col("false_negative")) / F.col("total_loads"))
+    )
+
+
+@dp.materialized_view(
+    name="fact_shovel_date_accuracy",
+    comment="Classification accuracy by shovel and date - supports D1 time-series drill-down"
+)
+def fact_shovel_date_accuracy():
+    """
+    Classification accuracy by shovel and date for trend analysis.
+
+    From D1 Requirements:
+    - Animated confusion matrix over time
+    - F1 score trend with anomaly detection
+    - Drill-down by shovel/date combination
+    """
+    return (
+        spark.read.table("fact_truck_loads")
+        .groupBy("load_date", "load_date_key", "shovel_id")
+        .agg(
+            F.count("*").alias("total_loads"),
+            F.sum(F.when(
+                (F.col("planned_classification") == "ORE") &
+                (F.col("shovelsense_classification") == "ORE"), 1
+            ).otherwise(0)).alias("true_positive"),
+            F.sum(F.when(
+                (F.col("planned_classification") == "WASTE") &
+                (F.col("shovelsense_classification") == "WASTE"), 1
+            ).otherwise(0)).alias("true_negative"),
+            F.sum(F.when(
+                (F.col("planned_classification") == "WASTE") &
+                (F.col("shovelsense_classification") == "ORE"), 1
+            ).otherwise(0)).alias("false_positive"),
+            F.sum(F.when(
+                (F.col("planned_classification") == "ORE") &
+                (F.col("shovelsense_classification") == "WASTE"), 1
+            ).otherwise(0)).alias("false_negative"),
+            F.avg("avg_xrf_confidence").alias("avg_xrf_confidence"),
+            F.sum("estimated_cu_value_usd").alias("total_cu_value_usd")
+        )
+        .withColumn("accuracy",
+            (F.col("true_positive") + F.col("true_negative")) / F.col("total_loads"))
+        .withColumn("precision_ore",
+            F.col("true_positive") / (F.col("true_positive") + F.col("false_positive")))
+        .withColumn("recall_ore",
+            F.col("true_positive") / (F.col("true_positive") + F.col("false_negative")))
+        .withColumn("f1_score",
+            2 * F.col("precision_ore") * F.col("recall_ore") /
+            (F.col("precision_ore") + F.col("recall_ore")))
+    )
+
+
+@dp.materialized_view(
+    name="fact_grade_bin_accuracy",
+    comment="Classification accuracy by grade bin - supports D1 threshold optimization"
+)
+def fact_grade_bin_accuracy():
+    """
+    Classification accuracy stratified by grade bin.
+
+    From D1 Requirements:
+    - Threshold optimization analysis
+    - Understand performance near cutoff grade
+    - Cost-weighted metrics by grade range
+    """
+    return (
+        spark.read.table("fact_truck_loads")
+        .groupBy("grade_bin")
+        .agg(
+            F.count("*").alias("total_loads"),
+            F.sum(F.when(
+                (F.col("planned_classification") == "ORE") &
+                (F.col("shovelsense_classification") == "ORE"), 1
+            ).otherwise(0)).alias("true_positive"),
+            F.sum(F.when(
+                (F.col("planned_classification") == "WASTE") &
+                (F.col("shovelsense_classification") == "WASTE"), 1
+            ).otherwise(0)).alias("true_negative"),
+            F.sum(F.when(
+                (F.col("planned_classification") == "WASTE") &
+                (F.col("shovelsense_classification") == "ORE"), 1
+            ).otherwise(0)).alias("false_positive"),
+            F.sum(F.when(
+                (F.col("planned_classification") == "ORE") &
+                (F.col("shovelsense_classification") == "WASTE"), 1
+            ).otherwise(0)).alias("false_negative"),
+            F.avg("avg_cu_grade_pct").alias("avg_xrf_grade"),
+            F.avg("avg_xrf_confidence").alias("avg_xrf_confidence"),
+            F.sum("estimated_cu_value_usd").alias("total_cu_value_usd"),
+            F.sum("payload_tonnes").alias("total_tonnes")
+        )
+        .withColumn("accuracy",
+            (F.col("true_positive") + F.col("true_negative")) / F.col("total_loads"))
+        .withColumn("precision_ore",
+            F.col("true_positive") / (F.col("true_positive") + F.col("false_positive")))
+        .withColumn("recall_ore",
+            F.col("true_positive") / (F.col("true_positive") + F.col("false_negative")))
+        .withColumn("f1_score",
+            2 * F.col("precision_ore") * F.col("recall_ore") /
+            (F.col("precision_ore") + F.col("recall_ore")))
+        .withColumn("error_rate",
+            (F.col("false_positive") + F.col("false_negative")) / F.col("total_loads"))
+    )

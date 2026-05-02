@@ -22,11 +22,13 @@ See `integrations/fizzy-webhooks/README.md` for full instructions.
 ## Phase 1: Foundation (High Priority)
 
 ### D1: Confusion Matrix Deep Dive
-- [ ] Create `notebooks/07_classification_analysis/01_confusion_matrix_explorer.py`
-- [ ] Build interactive Plotly confusion matrix with drill-down by shovel/date
-- [ ] Implement threshold optimization for cutoff grade
-- [ ] Add cost-weighted metrics (ore loss cost vs dilution cost)
-- [ ] Generate ROC curves by geological domain
+- [x] Create `notebooks/07_classification_analysis/01_confusion_matrix_explorer.py`
+- [x] Build interactive Plotly confusion matrix with drill-down by shovel/date
+- [x] Implement threshold optimization for cutoff grade
+- [x] Add cost-weighted metrics (ore loss cost vs dilution cost)
+- [x] Generate ROC curves by geological domain
+- [x] Create `notebooks/07_classification_analysis/02_threshold_optimizer.py` (bonus)
+- [x] Add pipeline views: `fact_shovel_classification_accuracy`, `fact_shovel_date_accuracy`, `fact_grade_bin_accuracy`
 
 ### C2: Surface-Volume Correlation Analysis
 - [ ] Create `notebooks/06_sv_correlation/01_correlation_by_zone.py`
@@ -97,7 +99,18 @@ See `integrations/fizzy-webhooks/README.md` for full instructions.
 ---
 
 ## Completed Tasks
-(Move items here as they are completed)
+
+### D1: Confusion Matrix Deep Dive (2026-05-01)
+- Created interactive Plotly notebooks for classification analysis
+- Notebooks: `notebooks/07_classification_analysis/01_confusion_matrix_explorer.py`, `02_threshold_optimizer.py`
+- Pipeline extensions: 3 new materialized views for drill-down analysis
+- Features implemented:
+  - Interactive confusion matrix heatmap
+  - Time series of F1/precision/recall
+  - Shovel-level performance comparison
+  - Threshold optimization with ROC/PR curves
+  - Cost-weighted economic analysis
+  - Domain-stratified ROC analysis
 
 ---
 
